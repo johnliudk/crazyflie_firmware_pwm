@@ -39,6 +39,8 @@
 
 #include "stabilizer.h"
 
+#include "num.h"
+
 #include "sensors.h"
 #include "commander.h"
 #include "crtp_localization_service.h"
@@ -64,13 +66,17 @@ static bool checkStops;
 uint32_t inToOutLatency;
 
 // State variables for the stabilizer
-static setpoint_t setpoint;
+// static setpoint_t setpoint;
 static sensorData_t sensorData;
 static state_t state;
-static control_t control;
+// static control_t control;
 
 static StateEstimatorType estimatorType;
 static ControllerType controllerType;
+
+static uint32_t packedImuL;
+static uint32_t packedImuA;
+static uint32_t packedYPR;
 
 static STATS_CNT_RATE_DEFINE(stabilizerRate, 500);
 static rateSupervisor_t rateSupervisorContext;
@@ -97,20 +103,20 @@ static struct {
   int16_t rateYaw;
 } stateCompressed;
 
-static struct {
-  // position - mm
-  int16_t x;
-  int16_t y;
-  int16_t z;
-  // velocity - mm / sec
-  int16_t vx;
-  int16_t vy;
-  int16_t vz;
-  // acceleration - mm / sec^2
-  int16_t ax;
-  int16_t ay;
-  int16_t az;
-} setpointCompressed;
+// static struct {
+//   // position - mm
+//   int16_t x;
+//   int16_t y;
+//   int16_t z;
+//   // velocity - mm / sec
+//   int16_t vx;
+//   int16_t vy;
+//   int16_t vz;
+//   // acceleration - mm / sec^2
+//   int16_t ax;
+//   int16_t ay;
+//   int16_t az;
+// } setpointCompressed;
 
 STATIC_MEM_TASK_ALLOC(stabilizerTask, STABILIZER_TASK_STACKSIZE);
 
@@ -149,20 +155,20 @@ static void compressState()
   stateCompressed.rateYaw = sensorData.gyro.z * deg2millirad;
 }
 
-static void compressSetpoint()
-{
-  setpointCompressed.x = setpoint.position.x * 1000.0f;
-  setpointCompressed.y = setpoint.position.y * 1000.0f;
-  setpointCompressed.z = setpoint.position.z * 1000.0f;
+// static void compressSetpoint()
+// {
+//   setpointCompressed.x = setpoint.position.x * 1000.0f;
+//   setpointCompressed.y = setpoint.position.y * 1000.0f;
+//   setpointCompressed.z = setpoint.position.z * 1000.0f;
 
-  setpointCompressed.vx = setpoint.velocity.x * 1000.0f;
-  setpointCompressed.vy = setpoint.velocity.y * 1000.0f;
-  setpointCompressed.vz = setpoint.velocity.z * 1000.0f;
+//   setpointCompressed.vx = setpoint.velocity.x * 1000.0f;
+//   setpointCompressed.vy = setpoint.velocity.y * 1000.0f;
+//   setpointCompressed.vz = setpoint.velocity.z * 1000.0f;
 
-  setpointCompressed.ax = setpoint.acceleration.x * 1000.0f;
-  setpointCompressed.ay = setpoint.acceleration.y * 1000.0f;
-  setpointCompressed.az = setpoint.acceleration.z * 1000.0f;
-}
+//   setpointCompressed.ax = setpoint.acceleration.x * 1000.0f;
+//   setpointCompressed.ay = setpoint.acceleration.y * 1000.0f;
+//   setpointCompressed.az = setpoint.acceleration.z * 1000.0f;
+// }
 
 void stabilizerInit(StateEstimatorType estimator)
 {
@@ -189,7 +195,7 @@ bool stabilizerTest(void)
   pass &= sensorsTest();
   pass &= stateEstimatorTest();
   pass &= controllerTest();
-  pass &= powerDistributionTest();
+  // pass &= powerDistributionTest();
   pass &= collisionAvoidanceTest();
 
   return pass;
@@ -243,26 +249,66 @@ static void stabilizerTask(void* param)
       sensorsAcquire(&sensorData, tick);
       healthRunTests(&sensorData);
     } else {
-      // allow to update estimator dynamically
-      if (getStateEstimator() != estimatorType) {
-        stateEstimatorSwitchTo(estimatorType);
-        estimatorType = getStateEstimator();
-      }
-      // allow to update controller dynamically
-      if (getControllerType() != controllerType) {
-        controllerInit(controllerType);
-        controllerType = getControllerType();
-      }
+      // // allow to update estimator dynamically
+      // if (getStateEstimator() != estimatorType) {
+      //   stateEstimatorSwitchTo(estimatorType);
+      //   estimatorType = getStateEstimator();
+      // }
+      // // allow to update controller dynamically
+      // if (getControllerType() != controllerType) {
+      //   controllerInit(controllerType);
+      //   controllerType = getControllerType();
+      // }
 
       stateEstimator(&state, &sensorData, tick);
       compressState();
 
-      commanderGetSetpoint(&setpoint, &state);
-      compressSetpoint();
+      // commanderGetSetpoint(&setpoint, &state);
+      // compressSetpoint();
 
-      collisionAvoidanceUpdateSetpoint(&setpoint, &sensorData, &state, tick);
+      // collisionAvoidanceUpdateSetpoint(&setpoint, &sensorData, &state, tick);
 
-      controller(&control, &setpoint, &sensorData, &state, tick);
+      // controller(&control, &setpoint, &sensorData, &state, tick);
+
+      uint16_t x, y, z, ax, ay, az;
+      float lin_min = -20;
+      float lin_max =  20;
+
+      float ang_min = -360;
+      float ang_max =  360;
+
+      // convert from Gs to m/s^2 state.acc.z
+      x  = (constrain(sensorData.acc.x * 9.81f, lin_min, lin_max) + 20) * 25.6f;
+      y  = (constrain(sensorData.acc.y * 9.81f, lin_min, lin_max) + 20) * 25.6f;
+      z  = (constrain(sensorData.acc.z * 9.81f, lin_min, lin_max) + 20) * 25.6f;
+
+
+      ax = (constrain(sensorData.gyro.x, ang_min, ang_max) + 360) * 1.42f;
+      ay = (constrain(sensorData.gyro.y, ang_min, ang_max) + 360) * 1.42f;
+      az = (constrain(sensorData.gyro.z, ang_min, ang_max) + 360) * 1.42f;
+
+      packedImuL =   (x & 0b1111111111)
+                  + ((y & 0b1111111111) << 10)
+                  + ((z & 0b1111111111) << 20);
+
+      packedImuA =   (ax & 0b1111111111)
+              + ((ay & 0b1111111111) << 10)
+              + ((az & 0b1111111111) << 20);
+
+      float y_max = 180;
+      float y_min = -180;
+      float pr_min = -90;
+      float pr_max =  90;
+
+      uint16_t py, pp, pr;  // holders for packed values
+
+      py = (constrain(state.attitude.yaw, y_min, y_max) + 180) * 2.84f;
+      pp = (constrain(state.attitude.pitch, pr_min, pr_max) + 90) * 2*2.84f;
+      pr = (constrain(state.attitude.roll, pr_min, pr_max) + 90) * 2*2.84f;
+
+      packedYPR =   (py & 0b1111111111)
+                + ((pp & 0b1111111111) << 10)
+                + ((pr & 0b1111111111) << 20);
 
       checkEmergencyStopTimeout();
 
@@ -276,7 +322,7 @@ static void stabilizerTask(void* param)
       if (emergencyStop || (systemIsArmed() == false)) {
         powerStop();
       } else {
-        powerDistribution(&control);
+        // powerDistribution(&control);
       }
 
       // Log data to uSD card if configured
@@ -321,53 +367,58 @@ PARAM_ADD(PARAM_UINT8, controller, &controllerType)
 PARAM_ADD(PARAM_UINT8, stop, &emergencyStop)
 PARAM_GROUP_STOP(stabilizer)
 
-LOG_GROUP_START(ctrltarget)
-LOG_ADD(LOG_FLOAT, x, &setpoint.position.x)
-LOG_ADD(LOG_FLOAT, y, &setpoint.position.y)
-LOG_ADD(LOG_FLOAT, z, &setpoint.position.z)
+// LOG_GROUP_START(ctrltarget)
+// LOG_ADD(LOG_FLOAT, x, &setpoint.position.x)
+// LOG_ADD(LOG_FLOAT, y, &setpoint.position.y)
+// LOG_ADD(LOG_FLOAT, z, &setpoint.position.z)
 
-LOG_ADD(LOG_FLOAT, vx, &setpoint.velocity.x)
-LOG_ADD(LOG_FLOAT, vy, &setpoint.velocity.y)
-LOG_ADD(LOG_FLOAT, vz, &setpoint.velocity.z)
+// LOG_ADD(LOG_FLOAT, vx, &setpoint.velocity.x)
+// LOG_ADD(LOG_FLOAT, vy, &setpoint.velocity.y)
+// LOG_ADD(LOG_FLOAT, vz, &setpoint.velocity.z)
 
-LOG_ADD(LOG_FLOAT, ax, &setpoint.acceleration.x)
-LOG_ADD(LOG_FLOAT, ay, &setpoint.acceleration.y)
-LOG_ADD(LOG_FLOAT, az, &setpoint.acceleration.z)
+// LOG_ADD(LOG_FLOAT, ax, &setpoint.acceleration.x)
+// LOG_ADD(LOG_FLOAT, ay, &setpoint.acceleration.y)
+// LOG_ADD(LOG_FLOAT, az, &setpoint.acceleration.z)
 
-LOG_ADD(LOG_FLOAT, roll, &setpoint.attitude.roll)
-LOG_ADD(LOG_FLOAT, pitch, &setpoint.attitude.pitch)
-LOG_ADD(LOG_FLOAT, yaw, &setpoint.attitudeRate.yaw)
-LOG_GROUP_STOP(ctrltarget)
+// LOG_ADD(LOG_FLOAT, roll, &setpoint.attitude.roll)
+// LOG_ADD(LOG_FLOAT, pitch, &setpoint.attitude.pitch)
+// LOG_ADD(LOG_FLOAT, yaw, &setpoint.attitudeRate.yaw)
+// LOG_GROUP_STOP(ctrltarget)
 
-LOG_GROUP_START(ctrltargetZ)
-LOG_ADD(LOG_INT16, x, &setpointCompressed.x)   // position - mm
-LOG_ADD(LOG_INT16, y, &setpointCompressed.y)
-LOG_ADD(LOG_INT16, z, &setpointCompressed.z)
+LOG_GROUP_START(compactImu)
+LOG_ADD(LOG_UINT32, l_xyz, &packedImuL) // removing linear accels from packets TODO NOL
+LOG_ADD(LOG_UINT32, a_xyz, &packedImuA)
+LOG_GROUP_STOP(compactImu)
 
-LOG_ADD(LOG_INT16, vx, &setpointCompressed.vx) // velocity - mm / sec
-LOG_ADD(LOG_INT16, vy, &setpointCompressed.vy)
-LOG_ADD(LOG_INT16, vz, &setpointCompressed.vz)
+// LOG_GROUP_START(ctrltargetZ)
+// LOG_ADD(LOG_INT16, x, &setpointCompressed.x)   // position - mm
+// LOG_ADD(LOG_INT16, y, &setpointCompressed.y)
+// LOG_ADD(LOG_INT16, z, &setpointCompressed.z)
 
-LOG_ADD(LOG_INT16, ax, &setpointCompressed.ax) // acceleration - mm / sec^2
-LOG_ADD(LOG_INT16, ay, &setpointCompressed.ay)
-LOG_ADD(LOG_INT16, az, &setpointCompressed.az)
-LOG_GROUP_STOP(ctrltargetZ)
+// LOG_ADD(LOG_INT16, vx, &setpointCompressed.vx) // velocity - mm / sec
+// LOG_ADD(LOG_INT16, vy, &setpointCompressed.vy)
+// LOG_ADD(LOG_INT16, vz, &setpointCompressed.vz)
+
+// LOG_ADD(LOG_INT16, ax, &setpointCompressed.ax) // acceleration - mm / sec^2
+// LOG_ADD(LOG_INT16, ay, &setpointCompressed.ay)
+// LOG_ADD(LOG_INT16, az, &setpointCompressed.az)
+// LOG_GROUP_STOP(ctrltargetZ)
 
 LOG_GROUP_START(stabilizer)
 LOG_ADD(LOG_FLOAT, roll, &state.attitude.roll)
 LOG_ADD(LOG_FLOAT, pitch, &state.attitude.pitch)
 LOG_ADD(LOG_FLOAT, yaw, &state.attitude.yaw)
-LOG_ADD(LOG_FLOAT, thrust, &control.thrust)
+// LOG_ADD(LOG_FLOAT, thrust, &control.thrust)
 
 STATS_CNT_RATE_LOG_ADD(rtStab, &stabilizerRate)
 LOG_ADD(LOG_UINT32, intToOut, &inToOutLatency)
 LOG_GROUP_STOP(stabilizer)
 
-LOG_GROUP_START(acc)
-LOG_ADD(LOG_FLOAT, x, &sensorData.acc.x)
-LOG_ADD(LOG_FLOAT, y, &sensorData.acc.y)
-LOG_ADD(LOG_FLOAT, z, &sensorData.acc.z)
-LOG_GROUP_STOP(acc)
+// LOG_GROUP_START(acc)
+// LOG_ADD(LOG_FLOAT, x, &sensorData.acc.x)
+// LOG_ADD(LOG_FLOAT, y, &sensorData.acc.y)
+// LOG_ADD(LOG_FLOAT, z, &sensorData.acc.z)
+// LOG_GROUP_STOP(acc)
 
 #ifdef LOG_SEC_IMU
 LOG_GROUP_START(accSec)
@@ -377,17 +428,17 @@ LOG_ADD(LOG_FLOAT, z, &sensorData.accSec.z)
 LOG_GROUP_STOP(accSec)
 #endif
 
-LOG_GROUP_START(baro)
-LOG_ADD(LOG_FLOAT, asl, &sensorData.baro.asl)
-LOG_ADD(LOG_FLOAT, temp, &sensorData.baro.temperature)
-LOG_ADD(LOG_FLOAT, pressure, &sensorData.baro.pressure)
-LOG_GROUP_STOP(baro)
+// LOG_GROUP_START(baro)
+// LOG_ADD(LOG_FLOAT, asl, &sensorData.baro.asl)
+// LOG_ADD(LOG_FLOAT, temp, &sensorData.baro.temperature)
+// LOG_ADD(LOG_FLOAT, pressure, &sensorData.baro.pressure)
+// LOG_GROUP_STOP(baro)
 
-LOG_GROUP_START(gyro)
-LOG_ADD(LOG_FLOAT, x, &sensorData.gyro.x)
-LOG_ADD(LOG_FLOAT, y, &sensorData.gyro.y)
-LOG_ADD(LOG_FLOAT, z, &sensorData.gyro.z)
-LOG_GROUP_STOP(gyro)
+// LOG_GROUP_START(gyro)
+// LOG_ADD(LOG_FLOAT, x, &sensorData.gyro.x)
+// LOG_ADD(LOG_FLOAT, y, &sensorData.gyro.y)
+// LOG_ADD(LOG_FLOAT, z, &sensorData.gyro.z)
+// LOG_GROUP_STOP(gyro)
 
 #ifdef LOG_SEC_IMU
 LOG_GROUP_START(gyroSec)
@@ -397,55 +448,55 @@ LOG_ADD(LOG_FLOAT, z, &sensorData.gyroSec.z)
 LOG_GROUP_STOP(gyroSec)
 #endif
 
-LOG_GROUP_START(mag)
-LOG_ADD(LOG_FLOAT, x, &sensorData.mag.x)
-LOG_ADD(LOG_FLOAT, y, &sensorData.mag.y)
-LOG_ADD(LOG_FLOAT, z, &sensorData.mag.z)
-LOG_GROUP_STOP(mag)
+// LOG_GROUP_START(mag)
+// LOG_ADD(LOG_FLOAT, x, &sensorData.mag.x)
+// LOG_ADD(LOG_FLOAT, y, &sensorData.mag.y)
+// LOG_ADD(LOG_FLOAT, z, &sensorData.mag.z)
+// LOG_GROUP_STOP(mag)
 
-LOG_GROUP_START(controller)
-LOG_ADD(LOG_INT16, ctr_yaw, &control.yaw)
-LOG_GROUP_STOP(controller)
+// LOG_GROUP_START(controller)
+// LOG_ADD(LOG_INT16, ctr_yaw, &control.yaw)
+// LOG_GROUP_STOP(controller)
 
-LOG_GROUP_START(stateEstimate)
-LOG_ADD(LOG_FLOAT, x, &state.position.x)
-LOG_ADD(LOG_FLOAT, y, &state.position.y)
-LOG_ADD(LOG_FLOAT, z, &state.position.z)
+// LOG_GROUP_START(stateEstimate)
+// LOG_ADD(LOG_FLOAT, x, &state.position.x)
+// LOG_ADD(LOG_FLOAT, y, &state.position.y)
+// LOG_ADD(LOG_FLOAT, z, &state.position.z)
 
-LOG_ADD(LOG_FLOAT, vx, &state.velocity.x)
-LOG_ADD(LOG_FLOAT, vy, &state.velocity.y)
-LOG_ADD(LOG_FLOAT, vz, &state.velocity.z)
+// LOG_ADD(LOG_FLOAT, vx, &state.velocity.x)
+// LOG_ADD(LOG_FLOAT, vy, &state.velocity.y)
+// LOG_ADD(LOG_FLOAT, vz, &state.velocity.z)
 
-LOG_ADD(LOG_FLOAT, ax, &state.acc.x)
-LOG_ADD(LOG_FLOAT, ay, &state.acc.y)
-LOG_ADD(LOG_FLOAT, az, &state.acc.z)
+// LOG_ADD(LOG_FLOAT, ax, &state.acc.x)
+// LOG_ADD(LOG_FLOAT, ay, &state.acc.y)
+// LOG_ADD(LOG_FLOAT, az, &state.acc.z)
 
-LOG_ADD(LOG_FLOAT, roll, &state.attitude.roll)
-LOG_ADD(LOG_FLOAT, pitch, &state.attitude.pitch)
-LOG_ADD(LOG_FLOAT, yaw, &state.attitude.yaw)
+// LOG_ADD(LOG_FLOAT, roll, &state.attitude.roll)
+// LOG_ADD(LOG_FLOAT, pitch, &state.attitude.pitch)
+// LOG_ADD(LOG_FLOAT, yaw, &state.attitude.yaw)
 
-LOG_ADD(LOG_FLOAT, qx, &state.attitudeQuaternion.x)
-LOG_ADD(LOG_FLOAT, qy, &state.attitudeQuaternion.y)
-LOG_ADD(LOG_FLOAT, qz, &state.attitudeQuaternion.z)
-LOG_ADD(LOG_FLOAT, qw, &state.attitudeQuaternion.w)
-LOG_GROUP_STOP(stateEstimate)
+// LOG_ADD(LOG_FLOAT, qx, &state.attitudeQuaternion.x)
+// LOG_ADD(LOG_FLOAT, qy, &state.attitudeQuaternion.y)
+// LOG_ADD(LOG_FLOAT, qz, &state.attitudeQuaternion.z)
+// LOG_ADD(LOG_FLOAT, qw, &state.attitudeQuaternion.w)
+// LOG_GROUP_STOP(stateEstimate)
 
-LOG_GROUP_START(stateEstimateZ)
-LOG_ADD(LOG_INT16, x, &stateCompressed.x)                 // position - mm
-LOG_ADD(LOG_INT16, y, &stateCompressed.y)
-LOG_ADD(LOG_INT16, z, &stateCompressed.z)
+// LOG_GROUP_START(stateEstimateZ)
+// LOG_ADD(LOG_INT16, x, &stateCompressed.x)                 // position - mm
+// LOG_ADD(LOG_INT16, y, &stateCompressed.y)
+// LOG_ADD(LOG_INT16, z, &stateCompressed.z)
 
-LOG_ADD(LOG_INT16, vx, &stateCompressed.vx)               // velocity - mm / sec
-LOG_ADD(LOG_INT16, vy, &stateCompressed.vy)
-LOG_ADD(LOG_INT16, vz, &stateCompressed.vz)
+// LOG_ADD(LOG_INT16, vx, &stateCompressed.vx)               // velocity - mm / sec
+// LOG_ADD(LOG_INT16, vy, &stateCompressed.vy)
+// LOG_ADD(LOG_INT16, vz, &stateCompressed.vz)
 
-LOG_ADD(LOG_INT16, ax, &stateCompressed.ax)               // acceleration - mm / sec^2
-LOG_ADD(LOG_INT16, ay, &stateCompressed.ay)
-LOG_ADD(LOG_INT16, az, &stateCompressed.az)
+// LOG_ADD(LOG_INT16, ax, &stateCompressed.ax)               // acceleration - mm / sec^2
+// LOG_ADD(LOG_INT16, ay, &stateCompressed.ay)
+// LOG_ADD(LOG_INT16, az, &stateCompressed.az)
 
-LOG_ADD(LOG_UINT32, quat, &stateCompressed.quat)           // compressed quaternion, see quatcompress.h
+// LOG_ADD(LOG_UINT32, quat, &stateCompressed.quat)           // compressed quaternion, see quatcompress.h
 
-LOG_ADD(LOG_INT16, rateRoll, &stateCompressed.rateRoll)   // angular velocity - milliradians / sec
-LOG_ADD(LOG_INT16, ratePitch, &stateCompressed.ratePitch)
-LOG_ADD(LOG_INT16, rateYaw, &stateCompressed.rateYaw)
-LOG_GROUP_STOP(stateEstimateZ)
+// LOG_ADD(LOG_INT16, rateRoll, &stateCompressed.rateRoll)   // angular velocity - milliradians / sec
+// LOG_ADD(LOG_INT16, ratePitch, &stateCompressed.ratePitch)
+// LOG_ADD(LOG_INT16, rateYaw, &stateCompressed.rateYaw)
+// LOG_GROUP_STOP(stateEstimateZ)

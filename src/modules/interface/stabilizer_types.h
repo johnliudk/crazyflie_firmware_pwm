@@ -44,6 +44,15 @@ typedef struct attitude_s {
   float yaw;
 } attitude_t;
 
+/* THRUSTS TYPE ADDED NOL */
+
+typedef struct thrusts_s {
+    float thrust_m1;
+    float thrust_m2;
+    float thrust_m3;
+    float thrust_m4;
+} thrusts_t;
+
 /* vector */
 #define vec3d_size 3
 typedef float vec3d[vec3d_size];

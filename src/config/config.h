@@ -74,7 +74,7 @@
 #define MULTIRANGER_TASK_PRI    3
 #define SYSTEM_TASK_PRI         2
 #define CRTP_TX_TASK_PRI        2
-#define CRTP_RX_TASK_PRI        2
+#define CRTP_RX_TASK_PRI        3 // changed from 2 to 3
 #define EXTRX_TASK_PRI          2
 #define ZRANGER_TASK_PRI        2
 #define ZRANGER2_TASK_PRI       2

@@ -32,6 +32,17 @@
 
 void crtpCommanderInit(void);
 void crtpCommanderRpytDecodeSetpoint(setpoint_t *setpoint, CRTPPacket *pk);
+void crtpCommanderRpytCompactDecodeSetpoint(setpoint_t *setpoint, CRTPPacket *pk);
 void crtpCommanderGenericDecodeSetpoint(setpoint_t *setpoint, CRTPPacket *pk);
+void custPowerDistributionTwo(uint16_t m1, uint16_t m2, uint16_t m3, uint16_t m4, uint16_t stamp);
+
+/**
+ * CRTP commander rpyt packet format
+ */
+struct CommanderCrtpCompactValues
+{
+    float packed_motor_vals;
+    uint16_t packet_id;  // Lambert added packetID to this commander packet
+} __attribute__((packed));
 
 #endif /* CRTP_COMMANDER_H_ */

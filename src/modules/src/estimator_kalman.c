@@ -223,6 +223,8 @@ NO_DMA_CCM_SAFE_ZERO_INIT static kalmanCoreData_t coreData;
 static bool isInit = false;
 
 static Axis3f accAccumulator;
+static Axis3f accAccumulatorSENT;  // NOL Add
+static Axis3f gyroAccumulatorSENT;  // NOL Add
 static Axis3f gyroAccumulator;
 static float baroAslAccumulator;
 static uint32_t accAccumulatorCount;
@@ -481,6 +483,10 @@ static bool predictStateForward(uint32_t osTick, float dt) {
   gyroAccumulatorCount = 0;
 
   xSemaphoreGive(dataMutex);
+
+  // ADDED Nol
+  gyroAccumulatorSENT = gyroAccumulator;
+  accAccumulatorSENT = accAccumulator;
 
   quadIsFlying = supervisorIsFlying();
   kalmanCorePredict(&coreData, &accAverage, &gyroAverage, dt, quadIsFlying);
