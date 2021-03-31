@@ -195,7 +195,7 @@ bool stabilizerTest(void)
   pass &= sensorsTest();
   pass &= stateEstimatorTest();
   pass &= controllerTest();
-  // pass &= powerDistributionTest();
+  pass &= powerDistributionTest();
   pass &= collisionAvoidanceTest();
 
   return pass;
