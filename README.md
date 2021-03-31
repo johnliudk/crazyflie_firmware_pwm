@@ -1,4 +1,6 @@
-# Crazyflie Firmware  [![CI](https://github.com/bitcraze/crazyflie-firmware/workflows/CI/badge.svg)](https://github.com/bitcraze/crazyflie-firmware/actions?query=workflow%3ACI)
+PWM control merged from https://github.com/natolambert/crazyflie-firmware-pwm-control
+
+# Crazyflie Firmware [![CI](https://github.com/bitcraze/crazyflie-firmware/workflows/CI/badge.svg)](https://github.com/bitcraze/crazyflie-firmware/actions?query=workflow%3ACI)
 
 This project contains the source code for the firmware used in the Crazyflie range of platforms, including
 the Crazyflie 2.X and the Roadrunner.
@@ -18,6 +20,7 @@ install some ARM toolchain.
 ### Install a toolchain
 
 #### OS X
+
 ```bash
 brew tap PX4/homebrew-px4
 brew install gcc-arm-none-eabi
@@ -64,6 +67,7 @@ Install Cygwin with [setup-x86_64.exe](https://www.cygwin.com/setup-x86_64.exe).
 Download the latest `gcc-arm-none-eabi-*-win32.zip` archive from [launchpad.net](https://launchpad.net/gcc-arm-embedded/+download). Create the directory `C:\cygwin64\opt\gcc-arm-none-eabi` and extract the contents of the zip file to it.
 
 Launch a Cygwin terminal and run the following to append to your `~/.bashrc` file:
+
 ```bash
 echo '[[ $PATH == */opt/gcc-arm-none-eabi/bin* ]] || export PATH=/opt/gcc-arm-none-eabi/bin:$PATH' >>~/.bashrc
 source ~/.bashrc
@@ -88,12 +92,12 @@ git submodule init
 git submodule update
 ```
 
-
 ## Compiling
 
 ### Crazyflie 2.X
 
-This is the default build so just running ```make``` is enough or:
+This is the default build so just running `make` is enough or:
+
 ```bash
 make PLATFORM=cf2
 ```
@@ -106,7 +110,7 @@ tb make PLATFORM=cf2
 
 ### Roadrunner
 
-Use the ```tag``` platform
+Use the `tag` platform
 
 ```bash
 make PLATFORM=tag
@@ -118,17 +122,18 @@ or with the toolbelt
 tb make PLATFORM=tag
 ```
 
-
 ### config.mk
+
 To create custom build options create a file called `config.mk` in the `tools/make/`
 folder and fill it with options. E.g.
+
 ```
 PLATFORM=CF2
 DEBUG=1
 ```
+
 More information can be found on the
 [Bitcraze documentation](https://www.bitcraze.io/documentation/repository/crazyflie-firmware/master/)
-
 
 # Make targets:
 
